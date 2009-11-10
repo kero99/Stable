@@ -83,7 +83,7 @@ Object::~Object( )
     {
         ///- Do NOT call RemoveFromWorld here, if the object is a player it will crash
         sLog.outError("Object::~Object (GUID: %u TypeId: %u) deleted but still in world!!", GetGUIDLow(), GetTypeId());
-        ASSERT(false);
+        //ASSERT(false);
     }
 
     if(m_objectUpdated)
