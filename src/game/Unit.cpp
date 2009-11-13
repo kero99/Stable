@@ -11939,8 +11939,6 @@ void Unit::RemoveFromWorld()
 		Uncharm();
         RemoveNotOwnSingleTargetAuras();
         RemoveGuardians();
-		RemoveAllGameObjects();
-        RemoveAllDynObjects();
     }
 
     Object::RemoveFromWorld();
@@ -11957,6 +11955,8 @@ void Unit::CleanupsBeforeDelete()
         DeleteThreatList();
         getHostileRefManager().setOnlineOfflineState(false);
         RemoveAllAuras(AURA_REMOVE_BY_DELETE);
+        RemoveAllGameObjects();
+        RemoveAllDynObjects();
         GetMotionMaster()->Clear(false);                    // remove different non-standard movement generators.
     }
     WorldObject::CleanupsBeforeDelete();
