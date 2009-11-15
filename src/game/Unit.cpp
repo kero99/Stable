@@ -170,9 +170,11 @@ Unit::~Unit()
             m_currentSpells[i] = NULL;
         }
     }
-	if (m_charmInfo)
-		delete m_charmInfo;
 
+    RemoveAllGameObjects();
+    RemoveAllDynObjects();
+
+    if(m_charmInfo) delete m_charmInfo;
 }
 
 void Unit::Update( uint32 p_time )
@@ -8552,25 +8554,16 @@ Pet* Unit::GetPet() const
 
 Unit* Unit::GetCharm() const
 {
-    if (uint64 charm_guid = GetCharmGUID())
+    if(uint64 charm_guid = GetCharmGUID())
     {
         if(Unit* pet = ObjectAccessor::GetUnit(*this, charm_guid))
             return pet;
 
-        sLog.outError("Unit::GetCharm: Charmed creature %u not exist. unitpointer: %p",GUID_LOPART(charm_guid), this);
+        sLog.outError("Unit::GetCharm: Charmed creature %u not exist.",GUID_LOPART(charm_guid));
         const_cast<Unit*>(this)->SetCharm(NULL);
     }
 
     return NULL;
-}
-
-void Unit::Uncharm()
-{
-	if (Unit* charm = GetCharm())
-	{
-		charm->RemoveSpellsCausingAura(SPELL_AURA_MOD_CHARM);
-		charm->RemoveSpellsCausingAura(SPELL_AURA_MOD_POSSESS);
-	}
 }
 
 float Unit::GetCombatDistance( const Unit* target ) const
@@ -11936,7 +11929,6 @@ void Unit::RemoveFromWorld()
     // cleanup
     if(IsInWorld())
     {
-		Uncharm();
         RemoveNotOwnSingleTargetAuras();
         RemoveGuardians();
         RemoveAllGameObjects();
