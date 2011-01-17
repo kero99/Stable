@@ -25,6 +25,7 @@
 #include <ace/Recursive_Thread_Mutex.h>
 #include "Policies/ThreadingModel.h"
 #include <ace/TSS_T.h>
+#include <ace/Atomic_Op.h>
 
 class SqlTransaction;
 class SqlResultQueue;
@@ -33,7 +34,7 @@ class SqlQueryHolder;
 #define MAX_QUERY_LEN   32*1024
 
 //
-class MANGOS_DLL_SPEC SqlConnection : public MaNGOS::ObjectLevelLockable<SqlConnection, ACE_Recursive_Thread_Mutex>
+class MANGOS_DLL_SPEC SqlConnection
 {
     public:
         virtual ~SqlConnection() {}
@@ -55,6 +56,23 @@ class MANGOS_DLL_SPEC SqlConnection : public MaNGOS::ObjectLevelLockable<SqlConn
         virtual bool CommitTransaction() { return true; }
         // can't rollback without transaction support
         virtual bool RollbackTransaction() { return true; }
+
+        //SqlConnection object lock
+        class Lock
+        {
+            public:
+                Lock(SqlConnection * conn) : m_pConn(conn) { m_pConn->m_mutex.acquire(); }
+                ~Lock() { m_pConn->m_mutex.release(); }
+
+                SqlConnection * operator->() const { return m_pConn; }
+
+            private:
+                SqlConnection * const m_pConn;
+        };
+
+    private:
+        typedef ACE_Recursive_Thread_Mutex LOCK_TYPE;
+        LOCK_TYPE m_mutex;
 };
 
 class MANGOS_DLL_SPEC Database
@@ -62,21 +80,21 @@ class MANGOS_DLL_SPEC Database
     public:
         virtual ~Database();
 
-        virtual bool Initialize(const char *infoString);
+        virtual bool Initialize(const char *infoString, int nConns = 1);
         virtual void InitDelayThread();
         virtual void HaltDelayThread();
 
         /// Synchronous DB queries
         inline QueryResult* Query(const char *sql)
         {
-            SqlConnection::Lock guard(*m_pQueryConn);
-            return m_pQueryConn->Query(sql);
+            SqlConnection::Lock guard(getQueryConnection());
+            return guard->Query(sql);
         }
 
         inline QueryNamedResult* QueryNamed(const char *sql)
         {
-            SqlConnection::Lock guard(*m_pQueryConn);
-            return m_pQueryConn->QueryNamed(sql);
+            SqlConnection::Lock guard(getQueryConnection());
+            return guard->QueryNamed(sql);
         }
 
         QueryResult* PQuery(const char *format,...) ATTR_PRINTF(2,3);
@@ -137,7 +155,7 @@ class MANGOS_DLL_SPEC Database
         //for sync transaction execution
         bool CommitTransactionDirect();
 
-        operator bool () const { return m_pQueryConn != 0 && m_pAsyncConn != 0; }
+        operator bool () const { return m_pQueryConnections.size() && m_pAsyncConn != 0; }
 
         //escape string generation
         void escape_string(std::string& str);
@@ -154,24 +172,14 @@ class MANGOS_DLL_SPEC Database
         uint32 GetPingIntervall() { return m_pingIntervallms; }
 
         //function to ping database connections
-        inline void Ping(const char *sql)
-        {
-            {
-                SqlConnection::Lock guard(*m_pAsyncConn);
-                delete m_pAsyncConn->Query(sql);
-            }
-
-            {
-                SqlConnection::Lock guard(*m_pQueryConn);
-                delete m_pQueryConn->Query(sql);
-            }
-
-        }
+        void Ping();
 
     protected:
-        Database() : m_pQueryConn(NULL), m_pAsyncConn(NULL), m_pResultQueue(NULL), 
-            m_threadBody(NULL), m_delayThread(NULL), m_logSQL(false), m_pingIntervallms(0)
-        {}
+        Database() : m_pAsyncConn(NULL), m_pResultQueue(NULL), m_threadBody(NULL), m_delayThread(NULL), 
+            m_logSQL(false), m_pingIntervallms(0), m_nQueryConnPoolSize(1)
+        {
+            m_nQueryCounter = -1;
+        }
 
         //factory method to create SqlConnection objects
         virtual SqlConnection * CreateConnection() = 0;
@@ -195,8 +203,22 @@ class MANGOS_DLL_SPEC Database
         typedef ACE_TSS<Database::TransHelper> DBTransHelperTSS;
         Database::DBTransHelperTSS m_TransStorage;
 
-        //DB connections
-        SqlConnection * m_pQueryConn;
+        ///< DB connections
+
+        //round-robin connection selection
+        SqlConnection * Database::getQueryConnection();
+        //for now return one single connection for async requests
+        SqlConnection * getAsyncConnection() const { return m_pAsyncConn; }
+
+        //connection helper counters
+        int m_nQueryConnPoolSize;                               //current size of query connection pool
+        ACE_Atomic_Op<ACE_Thread_Mutex, long> m_nQueryCounter;  //counter for connection selection
+
+        //lets use pool of connections for sync queries
+        typedef std::vector< SqlConnection * > SqlConnectionContainer;
+        SqlConnectionContainer m_pQueryConnections;
+
+        //only one single DB connection for transactions
         SqlConnection * m_pAsyncConn;
 
         SqlResultQueue *    m_pResultQueue;                  ///< Transaction queues from diff. threads

@@ -59,10 +59,13 @@ DatabaseMysql::~DatabaseMysql()
     if (m_delayThread)
         HaltDelayThread();
 
-    if(m_pQueryConn)
+    //destroy SqlConnection objects
+    if(m_pQueryConnections.size())
     {
-        delete m_pQueryConn;
-        m_pQueryConn = NULL;
+        for (int i  = 0; i < m_pQueryConnections.size(); ++i)
+            delete m_pQueryConnections[i];
+
+        m_pQueryConnections.clear();
     }
 
     if(m_pAsyncConn)

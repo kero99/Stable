@@ -21,7 +21,7 @@
 #include "DatabaseEnv.h"
 #include "DatabaseImpl.h"
 
-#define LOCK_DB_CONN(conn) SqlConnection::Lock guard(*conn)
+#define LOCK_DB_CONN(conn) SqlConnection::Lock guard(conn)
 
 /// ---- ASYNC STATEMENTS / TRANSACTIONS ----
 
@@ -36,8 +36,8 @@ SqlTransaction::~SqlTransaction()
 {
     while(!m_queue.empty())
     {
-        delete [] (const_cast<char*>(m_queue.front()));
-        m_queue.pop();
+        delete [] (const_cast<char*>(m_queue.back()));
+        m_queue.pop_back();
     }
 }
 
@@ -49,26 +49,17 @@ void SqlTransaction::Execute(SqlConnection *conn)
     LOCK_DB_CONN(conn);
 
     conn->BeginTransaction();
-    while(!m_queue.empty())
+
+    const int nItems = m_queue.size();
+    for (int i = 0; i < nItems; ++i)
     {
-        char *sql = const_cast<char*>(m_queue.front());
-        m_queue.pop();
+        const char *sql = m_queue[i];
 
         if(!conn->Execute(sql))
         {
-            delete [] sql;
-
             conn->RollbackTransaction();
-            while(!m_queue.empty())
-            {
-                delete [] (const_cast<char*>(m_queue.front()));
-                m_queue.pop();
-            }
-
             return;
         }
-
-        delete [] sql;
     }
 
     conn->CommitTransaction();

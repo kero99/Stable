@@ -59,7 +59,7 @@ void SqlDelayThread::run()
         if((loopCounter++) >= pingEveryLoop)
         {
             loopCounter = 0;
-            m_dbEngine->Ping("SELECT 1");
+            m_dbEngine->Ping();
         }
     }
 
