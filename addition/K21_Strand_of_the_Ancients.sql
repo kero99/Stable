@@ -384,5 +384,12 @@ INSERT INTO `gameobject` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `positi
 DELETE FROM `gameobject` WHERE `guid` in (300084,300085,300086);
 INSERT INTO `gameobject` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`, `orientation`, `rotation0`, `rotation1`, `rotation2`, `rotation3`, `spawntimesecs`, `animprogress`, `state`) VALUES
 (300084, 300000, 607, 1, 1, 1803.93, -168.457, 60.549, 2.74522, 0, 0, 0.980426, 0.196889, 250000, 0, 1),
-(300085, 300000, 607, 1, 1, 1803.71, 118.601, 59.8234, 3.56313, 0, 0, 0.97787, -0.209212, 250000, 0, 1),
-(300086, 184719, 607, 1, 1, 1200.67, -67.87, 70.08, 6.28297, 0, 0, 0.000106724, -1, 250000, 0, 1);
+(300085, 300000, 607, 1, 1, 1803.71, 118.601, 59.8234, 3.56313, 0, 0, 0.97787, -0.209212, 250000, 0, 1);
+
+-- Spanish gameobjects locales
+INSERT INTO locales_gameobject (`entry`, `name_loc6`, `name_loc7`) VALUES (190726,'Puerta del Sol Rojo','Puerta del Sol Rojo') ON DUPLICATE KEY UPDATE `name_loc6` = 'Puerta del Sol Rojo', `name_loc7` = 'Puerta del Sol Rojo';
+INSERT INTO locales_gameobject (`entry`, `name_loc6`, `name_loc7`) VALUES (190724,'Puerta del Zafiro Azul','Puerta del Zafiro Azul') ON DUPLICATE KEY UPDATE `name_loc6` = 'Puerta del Zafiro Azul', `name_loc7` = 'Puerta del Zafiro Azul';
+INSERT INTO locales_gameobject (`entry`, `name_loc6`, `name_loc7`) VALUES (190727,'Puerta de la Luna Amarilla','Puerta de la Luna Amarilla') ON DUPLICATE KEY UPDATE `name_loc6` = 'Puerta de la Luna Amarilla', `name_loc7` = 'Puerta de la Luna Amarilla';
+INSERT INTO locales_gameobject (`entry`, `name_loc6`, `name_loc7`) VALUES (190723,'Puerta de la Amatista Púrpura','Puerta de la Amatista Púrpura') ON DUPLICATE KEY UPDATE `name_loc6` = 'Puerta de la Amatista Púrpura', `name_loc7` = 'Puerta de la Amatista Púrpura';
+INSERT INTO locales_gameobject (`entry`, `name_loc6`, `name_loc7`) VALUES (190722,'Puerta de la Esmeralda Verde','Puerta de la Esmeralda Verde') ON DUPLICATE KEY UPDATE `name_loc6` = 'Puerta de la Esmeralda Verde', `name_loc7` = 'Puerta de la Esmeralda Verde';
+INSERT INTO locales_gameobject (`entry`, `name_loc6`, `name_loc7`) VALUES (192549,'Puerta de la Cámara de Reliquias Antiguas','Puerta de la Cámara de Reliquias Antiguas') ON DUPLICATE KEY UPDATE `name_loc6` = 'Puerta de la Cámara de Reliquias Antiguas', `name_loc7` = 'Puerta de la Cámara de Reliquias Antiguas';
