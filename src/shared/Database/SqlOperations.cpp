@@ -21,44 +21,31 @@
 #include "DatabaseEnv.h"
 #include "DatabaseImpl.h"
 
-#define LOCK_DB_CONN(conn) SqlConnection::Lock guard(*conn)
-
 /// ---- ASYNC STATEMENTS / TRANSACTIONS ----
 
-void SqlStatement::Execute(SqlConnection *conn)
+void SqlStatement::Execute(Database *db)
 {
     /// just do it
-    LOCK_DB_CONN(conn);
-    conn->Execute(m_sql);
+    db->DirectExecute(m_sql);
 }
 
-SqlTransaction::~SqlTransaction()
+void SqlTransaction::Execute(Database *db)
 {
-    while(!m_queue.empty())
-    {
-        delete [] (const_cast<char*>(m_queue.front()));
-        m_queue.pop();
-    }
-}
-
-void SqlTransaction::Execute(SqlConnection *conn)
-{
+    ACE_Guard<ACE_Thread_Mutex> _lock(m_Mutex);
     if(m_queue.empty())
         return;
 
-    LOCK_DB_CONN(conn);
-
-    conn->BeginTransaction();
+    db->DirectExecute("START TRANSACTION");
     while(!m_queue.empty())
     {
         char *sql = const_cast<char*>(m_queue.front());
         m_queue.pop();
 
-        if(!conn->Execute(sql))
+        if(!db->DirectExecute(sql))
         {
             delete [] sql;
 
-            conn->RollbackTransaction();
+            db->DirectExecute("ROLLBACK");
             while(!m_queue.empty())
             {
                 delete [] (const_cast<char*>(m_queue.front()));
@@ -71,19 +58,17 @@ void SqlTransaction::Execute(SqlConnection *conn)
         delete [] sql;
     }
 
-    conn->CommitTransaction();
+    db->DirectExecute("COMMIT");
 }
 
 /// ---- ASYNC QUERIES ----
 
-void SqlQuery::Execute(SqlConnection *conn)
+void SqlQuery::Execute(Database *db)
 {
     if(!m_callback || !m_queue)
         return;
-
-    LOCK_DB_CONN(conn);
     /// execute the query and store the result in the callback
-    m_callback->SetResult(conn->Query(m_sql));
+    m_callback->SetResult(db->Query(m_sql));
     /// add the callback to the sql result queue of the thread it originated from
     m_queue->add(m_callback);
 }
@@ -199,19 +184,19 @@ void SqlQueryHolder::SetSize(size_t size)
     m_queries.resize(size);
 }
 
-void SqlQueryHolderEx::Execute(SqlConnection *conn)
+void SqlQueryHolderEx::Execute(Database *db)
 {
     if(!m_holder || !m_callback || !m_queue)
         return;
 
-    LOCK_DB_CONN(conn);
     /// we can do this, we are friends
     std::vector<SqlQueryHolder::SqlResultPair> &queries = m_holder->m_queries;
+
     for(size_t i = 0; i < queries.size(); i++)
     {
         /// execute all queries in the holder and pass the results
         char const *sql = queries[i].first;
-        if(sql) m_holder->SetResult(i, conn->Query(sql));
+        if(sql) m_holder->SetResult(i, db->Query(sql));
     }
 
     /// sync with the caller thread

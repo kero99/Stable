@@ -18,7 +18,6 @@
 
 #include "DatabaseEnv.h"
 #include "Config/Config.h"
-#include "Database/SqlOperations.h"
 
 #include <ctime>
 #include <iostream>
@@ -26,16 +25,12 @@
 
 Database::~Database()
 {
-    HaltDelayThread();
     /*Delete objects*/
-    delete m_pResultQueue;
-    delete m_pQueryConn;
-    delete m_pAsyncConn;
 }
 
-bool Database::Initialize(const char * infoString)
+bool Database::Initialize(const char *)
 {
-    // Enable logging of SQL commands (usually only GM commands)
+    // Enable logging of SQL commands (usally only GM commands)
     // (See method: PExecuteLog)
     m_logSQL = sConfig.GetBoolDefault("LogSQL", false);
     m_logsDir = sConfig.GetStringDefault("LogsDir","");
@@ -46,52 +41,7 @@ bool Database::Initialize(const char * infoString)
     }
 
     m_pingIntervallms = sConfig.GetIntDefault ("MaxPingTime", 30) * (MINUTE * 1000);
-
-    //create DB connections
-    m_pQueryConn = CreateConnection();
-    m_pAsyncConn = CreateConnection();
-
-    //initialize DB connections
-    if(!m_pQueryConn->Initialize(infoString) || !m_pAsyncConn->Initialize(infoString))
-        return false;
-
-    InitDelayThread();
     return true;
-}
-
-SqlDelayThread * Database::CreateDelayThread()
-{ 
-    assert(m_pAsyncConn);
-    return new SqlDelayThread(this, m_pAsyncConn);
-}
-
-void Database::InitDelayThread()
-{
-    assert(!m_delayThread);
-
-    m_pResultQueue = new SqlResultQueue;
-    //New delay thread for delay execute
-    m_threadBody = CreateDelayThread();              // will deleted at m_delayThread delete
-    m_delayThread = new ACE_Based::Thread(m_threadBody);
-}
-
-void Database::HaltDelayThread()
-{
-    if (!m_threadBody || !m_delayThread) return;
-
-    m_threadBody->Stop();                                   //Stop event
-    m_delayThread->wait();                                  //Wait for flush to DB
-    delete m_delayThread;                                   //This also deletes m_threadBody
-    m_delayThread = NULL;
-    m_threadBody = NULL;
-
-    //stop async result queue
-    if(m_pResultQueue)
-    {
-        m_pResultQueue->Update();
-        delete m_pResultQueue;
-        m_pResultQueue = NULL;
-    }
 }
 
 void Database::ThreadStart()
@@ -102,20 +52,13 @@ void Database::ThreadEnd()
 {
 }
 
-void Database::ProcessResultQueue()
-{
-    if(m_pResultQueue)
-        m_pResultQueue->Update();
-}
-
 void Database::escape_string(std::string& str)
 {
     if(str.empty())
         return;
 
     char* buf = new char[str.size()*2+1];
-    //we don't care what connection to use - escape string will be the same
-    m_pQueryConn->escape_string(buf,str.c_str(),str.size());
+    escape_string(buf,str.c_str(),str.size());
     str = buf;
     delete[] buf;
 }
@@ -164,6 +107,12 @@ bool Database::PExecuteLog(const char * format,...)
     return Execute(szQuery);
 }
 
+void Database::SetResultQueue(SqlResultQueue * queue)
+{
+    m_queryQueues[ACE_Based::Thread::current()] = queue;
+
+}
+
 QueryResult* Database::PQuery(const char *format,...)
 {
     if(!format) return NULL;
@@ -202,29 +151,6 @@ QueryNamedResult* Database::PQueryNamed(const char *format,...)
     return QueryNamed(szQuery);
 }
 
-bool Database::Execute(const char *sql)
-{
-    if (!m_pAsyncConn)
-        return false;
-
-    SqlTransaction * pTrans = m_TransStorage->get();
-    if(pTrans)
-    {
-        //add SQL request to trans queue
-        pTrans->DelayExecute(sql);
-    }
-    else
-    {
-        // Simple sql statement
-        pTrans = new SqlTransaction;
-        pTrans->DelayExecute(sql);
-
-        m_threadBody->Delay(pTrans);
-    }
-
-    return true;
-}
-
 bool Database::PExecute(const char * format,...)
 {
     if (!format)
@@ -245,18 +171,6 @@ bool Database::PExecute(const char * format,...)
     return Execute(szQuery);
 }
 
-bool Database::DirectExecute(const char* sql)
-{
-    if(!m_pAsyncConn)
-        return false;
-
-    SqlTransaction trans;
-    trans.DelayExecute(sql);
-
-    trans.Execute(m_pAsyncConn);
-    return true;
-}
-
 bool Database::DirectPExecute(const char * format,...)
 {
     if (!format)
@@ -275,62 +189,6 @@ bool Database::DirectPExecute(const char * format,...)
     }
 
     return DirectExecute(szQuery);
-}
-
-bool Database::BeginTransaction()
-{
-    if (!m_pAsyncConn)
-        return false;
-
-    //initiate transaction on current thread
-    //currently we do not support queued transactions
-    m_TransStorage->init();
-    return true;
-}
-
-bool Database::CommitTransaction()
-{
-    if (!m_pAsyncConn)
-        return false;
-
-    //check if we have pending transaction
-    if(!m_TransStorage->get())
-        return false;
-
-    //add SqlTransaction to the async queue
-    m_threadBody->Delay(m_TransStorage->release());
-    return true;
-}
-
-bool Database::CommitTransactionDirect()
-{
-    if (!m_pAsyncConn)
-        return false;
-
-    //check if we have pending transaction
-    if(!m_TransStorage->get())
-        return false;
-
-    //directly execute SqlTransaction
-    SqlTransaction * pTrans = m_TransStorage->release();
-    pTrans->Execute(m_pAsyncConn);
-    delete pTrans;
-
-    return true;
-}
-
-bool Database::RollbackTransaction()
-{
-    if (!m_pAsyncConn)
-        return false;
-
-    if(!m_TransStorage->get())
-        return false;
-
-    //remove scheduled transaction
-    delete m_TransStorage->release();
-
-    return true;
 }
 
 bool Database::CheckRequiredField( char const* table_name, char const* required_name )
@@ -419,31 +277,4 @@ bool Database::CheckRequiredField( char const* table_name, char const* required_
     }
 
     return false;
-}
-
-Database::TransHelper::~TransHelper()
-{
-    if(m_pTrans)
-        delete m_pTrans;
-}
-
-SqlTransaction * Database::TransHelper::init()
-{
-    MANGOS_ASSERT(!m_pTrans);   //if we will get a nested transaction request - we MUST fix code!!!
-
-    //if(m_pTrans)
-    //{
-    //    //do not allow nested transactions
-    //    delete m_pTrans;
-    //}
-
-    m_pTrans = new SqlTransaction;
-    return m_pTrans;
-}
-
-SqlTransaction * Database::TransHelper::release()
-{
-    SqlTransaction * pRes = m_pTrans;
-    m_pTrans = NULL;
-    return pRes;
 }

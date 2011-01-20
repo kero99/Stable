@@ -91,6 +91,7 @@ World::World()
     m_startTime=m_gameTime;
     m_maxActiveSessionCount = 0;
     m_maxQueuedSessionCount = 0;
+    m_resultQueue = NULL;
     m_NextDailyQuestReset = 0;
     m_NextWeeklyQuestReset = 0;
     m_scheduledScripts = 0;
@@ -133,6 +134,8 @@ World::~World()
         delete command;
 
     VMAP::VMapFactory::clear();
+
+    if(m_resultQueue) delete m_resultQueue;
 
     //TODO free addSessQueue
 }
@@ -2056,14 +2059,13 @@ void World::SendBroadcast()
 
 void World::InitResultQueue()
 {
+    m_resultQueue = new SqlResultQueue;
+    CharacterDatabase.SetResultQueue(m_resultQueue);
 }
 
 void World::UpdateResultQueue()
 {
-    //process async result queues
-    CharacterDatabase.ProcessResultQueue();
-    WorldDatabase.ProcessResultQueue();
-    LoginDatabase.ProcessResultQueue();
+    m_resultQueue->Update();
 }
 
 void World::UpdateRealmCharCount(uint32 accountId)

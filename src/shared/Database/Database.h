@@ -22,68 +22,38 @@
 #include "Threading.h"
 #include "Utilities/UnorderedMapSet.h"
 #include "Database/SqlDelayThread.h"
-#include <ace/Recursive_Thread_Mutex.h>
-#include "Policies/ThreadingModel.h"
-#include <ace/TSS_T.h>
 
 class SqlTransaction;
 class SqlResultQueue;
 class SqlQueryHolder;
 
+typedef UNORDERED_MAP<ACE_Based::Thread* , SqlTransaction*> TransactionQueues;
+typedef UNORDERED_MAP<ACE_Based::Thread* , SqlResultQueue*> QueryQueues;
+
 #define MAX_QUERY_LEN   32*1024
-
-//
-class MANGOS_DLL_SPEC SqlConnection : public MaNGOS::ObjectLevelLockable<SqlConnection, ACE_Recursive_Thread_Mutex>
-{
-    public:
-        virtual ~SqlConnection() {}
-
-        //method for initializing DB connection
-        virtual bool Initialize(const char *infoString) = 0;
-        //public methods for making queries
-        virtual QueryResult* Query(const char *sql) = 0;
-        virtual QueryNamedResult* QueryNamed(const char *sql) = 0;
-
-        //public methods for making requests
-        virtual bool Execute(const char *sql) = 0;
-
-        //escape string generation
-        virtual unsigned long escape_string(char *to, const char *from, unsigned long length) { strncpy(to,from,length); return length; }
-
-        // nothing do if DB not support transactions
-        virtual bool BeginTransaction() { return true; }
-        virtual bool CommitTransaction() { return true; }
-        // can't rollback without transaction support
-        virtual bool RollbackTransaction() { return true; }
-};
 
 class MANGOS_DLL_SPEC Database
 {
+    protected:
+        Database() : m_threadBody(NULL), m_delayThread(NULL) {};
+
+        TransactionQueues m_tranQueues;                     ///< Transaction queues from diff. threads
+        QueryQueues m_queryQueues;                          ///< Query queues from diff threads
+        SqlDelayThread* m_threadBody;                       ///< Pointer to delay sql executer (owned by m_delayThread)
+        ACE_Based::Thread* m_delayThread;                   ///< Pointer to executer thread
+
     public:
+
         virtual ~Database();
 
         virtual bool Initialize(const char *infoString);
-        virtual void InitDelayThread();
-        virtual void HaltDelayThread();
+        virtual void InitDelayThread() = 0;
+        virtual void HaltDelayThread() = 0;
 
-        /// Synchronous DB queries
-        inline QueryResult* Query(const char *sql)
-        {
-            SqlConnection::Lock guard(*m_pQueryConn);
-            return m_pQueryConn->Query(sql);
-        }
-
-        inline QueryNamedResult* QueryNamed(const char *sql)
-        {
-            SqlConnection::Lock guard(*m_pQueryConn);
-            return m_pQueryConn->QueryNamed(sql);
-        }
-
+        virtual QueryResult* Query(const char *sql) = 0;
         QueryResult* PQuery(const char *format,...) ATTR_PRINTF(2,3);
+        virtual QueryNamedResult* QueryNamed(const char *sql) = 0;
         QueryNamedResult* PQueryNamed(const char *format,...) ATTR_PRINTF(2,3);
-
-        bool DirectExecute(const char* sql);
-        bool DirectPExecute(const char *format,...) ATTR_PRINTF(2,3);
 
         /// Async queries and query holders, implemented in DatabaseImpl.h
 
@@ -125,21 +95,30 @@ class MANGOS_DLL_SPEC Database
         template<class Class, typename ParamType1>
             bool DelayQueryHolder(Class *object, void (Class::*method)(QueryResult*, SqlQueryHolder*, ParamType1), SqlQueryHolder *holder, ParamType1 param1);
 
-        bool Execute(const char *sql);
+        virtual bool Execute(const char *sql) = 0;
         bool PExecute(const char *format,...) ATTR_PRINTF(2,3);
+        virtual bool DirectExecute(const char* sql) = 0;
+        bool DirectPExecute(const char *format,...) ATTR_PRINTF(2,3);
 
         // Writes SQL commands to a LOG file (see mangosd.conf "LogSQL")
         bool PExecuteLog(const char *format,...) ATTR_PRINTF(2,3);
 
-        bool BeginTransaction();
-        bool CommitTransaction();
-        bool RollbackTransaction();
-        //for sync transaction execution
-        bool CommitTransactionDirect();
+        virtual bool BeginTransaction()                     // nothing do if DB not support transactions
+        {
+            return true;
+        }
+        virtual bool CommitTransaction()                    // nothing do if DB not support transactions
+        {
+            return true;
+        }
+        virtual bool RollbackTransaction()                  // can't rollback without transaction support
+        {
+            return false;
+        }
 
-        operator bool () const { return m_pQueryConn != 0 && m_pAsyncConn != 0; }
+        virtual operator bool () const = 0;
 
-        //escape string generation
+        virtual unsigned long escape_string(char *to, const char *from, unsigned long length) { strncpy(to,from,length); return length; }
         void escape_string(std::string& str);
 
         // must be called before first query in thread (one time for thread using one from existing Database objects)
@@ -147,64 +126,13 @@ class MANGOS_DLL_SPEC Database
         // must be called before finish thread run (one time for thread using one from existing Database objects)
         virtual void ThreadEnd();
 
-        // set database-wide result queue. also we should use object-bases and not thread-based result queues
-        void ProcessResultQueue();
+        // sets the result queue of the current thread, be careful what thread you call this from
+        void SetResultQueue(SqlResultQueue * queue);
 
         bool CheckRequiredField(char const* table_name, char const* required_name);
-        uint32 GetPingIntervall() { return m_pingIntervallms; }
-
-        //function to ping database connections
-        inline void Ping(const char *sql)
-        {
-            {
-                SqlConnection::Lock guard(*m_pAsyncConn);
-                delete m_pAsyncConn->Query(sql);
-            }
-
-            {
-                SqlConnection::Lock guard(*m_pQueryConn);
-                delete m_pQueryConn->Query(sql);
-            }
-
-        }
-
-    protected:
-        Database() : m_pQueryConn(NULL), m_pAsyncConn(NULL), m_pResultQueue(NULL), 
-            m_threadBody(NULL), m_delayThread(NULL), m_logSQL(false), m_pingIntervallms(0)
-        {}
-
-        //factory method to create SqlConnection objects
-        virtual SqlConnection * CreateConnection() = 0;
-        //factory method to create SqlDelayThread objects
-        virtual SqlDelayThread * CreateDelayThread();
-
-        class TransHelper
-        {
-            public:
-                TransHelper() : m_pTrans(NULL) {}
-                ~TransHelper();
-
-                SqlTransaction * init();
-                SqlTransaction * get() const { return m_pTrans; }
-                SqlTransaction * release();
-
-            private:
-                SqlTransaction * m_pTrans;
-        };
-
-        typedef ACE_TSS<Database::TransHelper> DBTransHelperTSS;
-        Database::DBTransHelperTSS m_TransStorage;
-
-        //DB connections
-        SqlConnection * m_pQueryConn;
-        SqlConnection * m_pAsyncConn;
-
-        SqlResultQueue *    m_pResultQueue;                  ///< Transaction queues from diff. threads
-        SqlDelayThread *    m_threadBody;                    ///< Pointer to delay sql executer (owned by m_delayThread)
-        ACE_Based::Thread * m_delayThread;                   ///< Pointer to executer thread
+        uint32 GetPingIntervall() { return m_pingIntervallms;}
 
     private:
-
         bool m_logSQL;
         std::string m_logsDir;
         uint32 m_pingIntervallms;
