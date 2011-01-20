@@ -979,7 +979,7 @@ void Spell::AddGOTarget(GameObject* pVictim, SpellEffectIndex effIndex)
     target.targetGUID = targetGUID;
     target.effectMask = (1 << effIndex);
     target.processed  = false;                              // Effects not apply on target
-    target.deleted = false
+    target.deleted = false;
 
     // spell fly from visual cast object
     WorldObject* affectiveObject = GetAffectiveCasterObject();
