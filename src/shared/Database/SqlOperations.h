@@ -55,8 +55,7 @@ class SqlStatement : public SqlOperation
 class SqlTransaction : public SqlOperation
 {
     private:
-        std::vector<const char *> m_queue;
-
+        std::queue<const char *> m_queue;
     public:
         SqlTransaction() {}
         ~SqlTransaction();
@@ -64,7 +63,7 @@ class SqlTransaction : public SqlOperation
         void DelayExecute(const char *sql)
         {
             char* _sql = mangos_strdup(sql);
-            m_queue.push_back(_sql);
+            m_queue.push(_sql);
         }
 
         void Execute(SqlConnection *conn);

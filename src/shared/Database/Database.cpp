@@ -24,21 +24,16 @@
 #include <iostream>
 #include <fstream>
 
-#define MIN_CONNECTION_POOL_SIZE 1
-#define MAX_CONNECTION_POOL_SIZE 16
-
 Database::~Database()
 {
     HaltDelayThread();
     /*Delete objects*/
     delete m_pResultQueue;
+    delete m_pQueryConn;
     delete m_pAsyncConn;
-
-    for (int i = 0; i < m_pQueryConnections.size(); ++i)
-        delete m_pQueryConnections[i];
 }
 
-bool Database::Initialize(const char * infoString, int nConns /*= 1*/)
+bool Database::Initialize(const char * infoString)
 {
     // Enable logging of SQL commands (usually only GM commands)
     // (See method: PExecuteLog)
@@ -53,31 +48,11 @@ bool Database::Initialize(const char * infoString, int nConns /*= 1*/)
     m_pingIntervallms = sConfig.GetIntDefault ("MaxPingTime", 30) * (MINUTE * 1000);
 
     //create DB connections
-
-    //setup connection pool size
-    if(nConns < MIN_CONNECTION_POOL_SIZE)
-        m_nQueryConnPoolSize = MIN_CONNECTION_POOL_SIZE;
-    else if(nConns > MAX_CONNECTION_POOL_SIZE)
-        m_nQueryConnPoolSize = MAX_CONNECTION_POOL_SIZE;
-    else
-        m_nQueryConnPoolSize = nConns;
-
-    //create connection pool for sync requests
-    for (int i = 0; i < m_nQueryConnPoolSize; ++i)
-    {
-        SqlConnection * pConn = CreateConnection();
-        if(!pConn->Initialize(infoString))
-        {
-            delete pConn;
-            return false;
-        }
-
-        m_pQueryConnections.push_back(pConn);
-    }
-
-    //create and initialize connection for async requests
+    m_pQueryConn = CreateConnection();
     m_pAsyncConn = CreateConnection();
-    if(!m_pAsyncConn->Initialize(infoString))
+
+    //initialize DB connections
+    if(!m_pQueryConn->Initialize(infoString) || !m_pAsyncConn->Initialize(infoString))
         return false;
 
     InitDelayThread();
@@ -140,37 +115,9 @@ void Database::escape_string(std::string& str)
 
     char* buf = new char[str.size()*2+1];
     //we don't care what connection to use - escape string will be the same
-    m_pQueryConnections[0]->escape_string(buf,str.c_str(),str.size());
+    m_pQueryConn->escape_string(buf,str.c_str(),str.size());
     str = buf;
     delete[] buf;
-}
-
-SqlConnection * Database::getQueryConnection()
-{
-    int nCount = 0;
-
-    if(m_nQueryCounter == long(1 << 31))
-        m_nQueryCounter = 0;
-    else
-        nCount = ++m_nQueryCounter;
-
-    return m_pQueryConnections[nCount % m_nQueryConnPoolSize];
-}
-
-void Database::Ping()
-{
-    const char * sql = "SELECT 1";
-
-    {
-        SqlConnection::Lock guard(m_pAsyncConn);
-        delete m_pAsyncConn->Query(sql);
-    }
-
-    for (int i = 0; i < m_nQueryConnPoolSize; ++i)
-    {
-        SqlConnection::Lock guard(m_pQueryConnections[i]);
-        delete guard->Query(sql);
-    }
 }
 
 bool Database::PExecuteLog(const char * format,...)
@@ -483,6 +430,13 @@ Database::TransHelper::~TransHelper()
 SqlTransaction * Database::TransHelper::init()
 {
     MANGOS_ASSERT(!m_pTrans);   //if we will get a nested transaction request - we MUST fix code!!!
+
+    //if(m_pTrans)
+    //{
+    //    //do not allow nested transactions
+    //    delete m_pTrans;
+    //}
+
     m_pTrans = new SqlTransaction;
     return m_pTrans;
 }
