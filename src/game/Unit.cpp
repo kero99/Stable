@@ -329,9 +329,6 @@ void Unit::Update( uint32 update_diff, uint32 p_time )
     sWorld.m_spellUpdateLock.acquire();
     m_Events.Update( update_diff );
 
-    if(!IsInWorld())
-        return;
-
     _UpdateSpells( update_diff );
     sWorld.m_spellUpdateLock.release();
 
