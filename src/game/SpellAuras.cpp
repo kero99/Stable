@@ -1123,7 +1123,16 @@ void Aura::TriggerSpell()
     ObjectGuid casterGUID = GetCasterGuid();
     Unit* triggerTarget = GetTriggerTarget();
 
-    if (casterGUID.IsEmpty() || !triggerTarget)
+    // Penance, set target to self if no target set
+    if (!triggerTarget)
+    {
+        uint32 auraId = GetSpellProto()->Id;
+        if (auraId == 47757 || auraId == 52986 || auraId == 52987 || auraId == 52988)
+            triggerTarget = GetCaster();
+        else
+            return; // if no triggerTarget then we can't go further
+    }
+    if (casterGUID.IsEmpty())
         return;
 
     // generic casting code with custom spells and target/caster customs
@@ -1947,6 +1956,17 @@ void Aura::TriggerSpell()
                 int32 mana = target->GetMaxPower(POWER_MANA) * m_modifier.m_amount / 100;
                 triggerTarget->CastCustomSpell(triggerTarget, trigger_spell_id, &mana, NULL, NULL, true, NULL, this);
                 return;
+            }
+            // Penance target hack
+            case 47757:
+            case 52986:
+            case 52987:
+            case 52988:
+            {
+                if (!(triggerTarget->HasAura(47757) || triggerTarget->HasAura(52986) || triggerTarget->HasAura(52987) || triggerTarget->HasAura(52988)))
+                    triggerTarget = target;
+
+                break;
             }
         }
     }
