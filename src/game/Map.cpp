@@ -203,13 +203,13 @@ void Map::AddNotifier(T* , Cell const& , CellPair const& )
 template<>
 void Map::AddNotifier(Player* obj, Cell const& cell, CellPair const& cellpair)
 {
-    obj->SheduleAINotify(0);
+    PlayerRelocationNotify(obj,cell,cellpair);
 }
 
 template<>
 void Map::AddNotifier(Creature* obj, Cell const&, CellPair const&)
 {
-    obj->SheduleAINotify(0);
+    obj->SetNeedNotify();
 }
 
 void
@@ -675,28 +675,6 @@ Map::Remove(T *obj, bool remove)
     }
 }
 
-float  Map::relocation_lower_limit_sq   = 10.f * 10.f;
-uint32 Map::relocation_ai_notify_delay  = 1000u;
-
-inline void _F_optimized(Unit & u)
-{
-    float dx = u.m_last_notified_position.x - u.GetPositionX();
-    float dy = u.m_last_notified_position.y - u.GetPositionY();
-    float dz = u.m_last_notified_position.z - u.GetPositionZ();
-    float distsq = dx*dx+dy*dy+dz*dz;
-
-    if (distsq > Map::relocation_lower_limit_sq)
-    {
-        u.m_last_notified_position.x = u.GetPositionX();
-        u.m_last_notified_position.y = u.GetPositionY();
-        u.m_last_notified_position.z = u.GetPositionZ();
-
-        u.SheduleVisibilityUpdate();
-    }
-
-    u.SheduleAINotify(Map::relocation_ai_notify_delay);
-}
-
 void
 Map::PlayerRelocation(Player *player, float x, float y, float z, float orientation)
 {
@@ -726,7 +704,10 @@ Map::PlayerRelocation(Player *player, float x, float y, float z, float orientati
         player->GetViewPoint().Event_GridChanged(&(*newGrid)(new_cell.CellX(),new_cell.CellY()));
     }
 
-    _F_optimized(*player);
+    player->GetViewPoint().Call_UpdateVisibilityForOwner();
+    // if move then update what player see and who seen
+    UpdateObjectVisibility(player, new_cell, new_val);
+    PlayerRelocationNotify(player,new_cell,new_val);
 
     NGridType* newGrid = getNGrid(new_cell.GridX(), new_cell.GridY());
     if( !same_cell && newGrid->GetGridState()!= GRID_STATE_ACTIVE )
@@ -746,23 +727,39 @@ Map::CreatureRelocation(Creature *creature, float x, float y, float z, float ang
     CellPair new_val = MaNGOS::ComputeCellPair(x, y);
     Cell new_cell(new_val);
 
-    bool moved_to_resp = false;
+    // delay creature move for grid/cell to grid/cell moves
     if (old_cell.DiffCell(new_cell) || old_cell.DiffGrid(new_cell))
     {
         DEBUG_FILTER_LOG(LOG_FILTER_CREATURE_MOVES, "Creature (GUID: %u Entry: %u) added to moving list from grid[%u,%u]cell[%u,%u] to grid[%u,%u]cell[%u,%u].", creature->GetGUIDLow(), creature->GetEntry(), old_cell.GridX(), old_cell.GridY(), old_cell.CellX(), old_cell.CellY(), new_cell.GridX(), new_cell.GridY(), new_cell.CellX(), new_cell.CellY());
 
-        // try to move to the new cell or move it to respawn -- do nothing if both operations failed
-        if (!CreatureCellRelocation(creature,new_cell) && !(moved_to_resp = CreatureRespawnRelocation(creature)))
+        // do move or do move to respawn or remove creature if previous all fail
+        if(CreatureCellRelocation(creature,new_cell))
         {
-            DEBUG_FILTER_LOG(LOG_FILTER_CREATURE_MOVES, "Creature (GUID: %u Entry: %u ) can't be move to unloaded respawn grid.",creature->GetGUIDLow(),creature->GetEntry());
-            return;
+            // update pos
+            creature->Relocate(x, y, z, ang);
+
+            // in diffcell/diffgrid case notifiers called in Creature::Update
+            creature->SetNeedNotify();
+        }
+        else
+        {
+            // if creature can't be move in new cell/grid (not loaded) move it to repawn cell/grid
+            // creature coordinates will be updated and notifiers send
+            if(!CreatureRespawnRelocation(creature))
+            {
+                // ... or unload (if respawn grid also not loaded)
+                DEBUG_FILTER_LOG(LOG_FILTER_CREATURE_MOVES, "Creature (GUID: %u Entry: %u ) can't be move to unloaded respawn grid.",creature->GetGUIDLow(),creature->GetEntry());
+                creature->SetNeedNotify();
+            }
         }
     }
-
-    if (!moved_to_resp)
+    else
+    {
         creature->Relocate(x, y, z, ang);
+        creature->SetNeedNotify();
+    }
 
-    _F_optimized(*creature);
+    creature->GetViewPoint().Call_UpdateVisibilityForOwner();
     MANGOS_ASSERT(CheckGridIntegrity(creature,true));
 }
 
@@ -846,6 +843,7 @@ bool Map::CreatureRespawnRelocation(Creature *c)
     {
         c->Relocate(resp_x, resp_y, resp_z, resp_o);
         c->GetMotionMaster()->Initialize();                 // prevent possible problems with default move generators
+        c->SetNeedNotify();
         return true;
     }
     else

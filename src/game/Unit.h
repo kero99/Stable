@@ -820,13 +820,6 @@ inline ByteBuffer& operator>> (ByteBuffer& buf, MovementInfo& mi)
     return buf;
 }
 
-enum RelocationOperations
-{
-    AI_Notify_Sheduled          = 0x01,         // AI relocation notification sheduled
-    AI_Notify_Execution         = 0x02,         // AI relocation notification will be executed in next update tick
-    Visibility_Update_Execution = 0x04,         // Visibility will be updated in next update tick
-};
-
 enum DiminishingLevels
 {
     DIMINISHING_LEVEL_1             = 0,
@@ -2015,16 +2008,6 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         // Movement info
         MovementInfo m_movementInfo;
 
-        void SheduleAINotify(uint32 delay);
-        void SheduleVisibilityUpdate();
-
-        uint8 m_notify_sheduled;
-        bool isNotifySheduled(uint8 f) const { return m_notify_sheduled & f;}
-        struct 
-        {
-            float x, y, z;
-        } m_last_notified_position;
-
         // Transports
         Transport* GetTransport() const { return m_transport; }
         void SetTransport(Transport* pTransport) { m_transport = pTransport; }
@@ -2044,6 +2027,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         VehicleKit* GetVehicleKit() const { return m_pVehicleKit; }
         bool CreateVehicleKit(uint32 vehicleId);
         void RemoveVehicleKit();
+
     protected:
         explicit Unit ();
 

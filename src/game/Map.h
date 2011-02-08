@@ -237,9 +237,6 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>
             i_objectsToClientNotUpdate.insert(obj);
         }
 
-        static float  relocation_lower_limit_sq;
-        static uint32 relocation_ai_notify_delay;
-
         // DynObjects currently
         uint32 GenerateLocalLowGuid(HighGuid guidhigh);
 
