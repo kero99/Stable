@@ -75,44 +75,6 @@ inline void CreatureCreatureRelocationWorker(Creature* c1, Creature* c2)
     }
 }
 
-inline void MaNGOS::PlayerRelocationNotifier::Visit(CreatureMapType &m)
-{
-    if (!i_player.isAlive() || i_player.IsTaxiFlying())
-        return;
-
-    WorldObject const* viewPoint = i_player.GetCamera().GetBody();
-
-    for(CreatureMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
-        if (iter->getSource()->isAlive())
-            PlayerCreatureRelocationWorker(&i_player, viewPoint, iter->getSource());
-}
-
-template<>
-inline void MaNGOS::CreatureRelocationNotifier::Visit(PlayerMapType &m)
-{
-    if (!i_creature.isAlive())
-        return;
-
-    for(PlayerMapType::iterator iter=m.begin(); iter != m.end(); ++iter)
-        if (Player* player = iter->getSource())
-            if (player->isAlive() && !player->IsTaxiFlying())
-                PlayerCreatureRelocationWorker(player, player->GetCamera().GetBody(), &i_creature);
-}
-
-template<>
-inline void MaNGOS::CreatureRelocationNotifier::Visit(CreatureMapType &m)
-{
-    if (!i_creature.isAlive())
-        return;
-
-    for(CreatureMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
-    {
-        Creature* c = iter->getSource();
-        if (c != &i_creature && c->isAlive())
-            CreatureCreatureRelocationWorker(c, &i_creature);
-    }
-}
-
 inline void MaNGOS::DynamicObjectUpdater::VisitHelper(Unit* target)
 {
     if (!target->isAlive() || target->IsTaxiFlying() )
