@@ -1386,8 +1386,7 @@ bool InstanceMap::Add(Player *player)
                     GetInstanceSave()->GetMapId(), GetInstanceSave()->GetInstanceId(),
                     GetInstanceSave()->GetDifficulty(), GetInstanceSave()->GetPlayerCount(),
                     GetInstanceSave()->GetGroupCount(), GetInstanceSave()->CanReset());
-                 player->RepopAtGraveyard();
-                 return false;
+                 MANGOS_ASSERT(false);
             }
         }
         else
@@ -1440,8 +1439,7 @@ bool InstanceMap::Add(Player *player)
                             sLog.outError("GroupBind save players: %d, group count: %d", groupBind->save->GetPlayerCount(), groupBind->save->GetGroupCount());
                         else
                             sLog.outError("GroupBind save NULL");
-                        player->RepopAtGraveyard();
-                        return false;
+                        MANGOS_ASSERT(false);
                     }
                     // if the group/leader is permanently bound to the instance
                     // players also become permanently bound when they enter
@@ -1465,11 +1463,8 @@ bool InstanceMap::Add(Player *player)
                 if(!playerBind)
                     player->BindToInstance(GetInstanceSave(), false);
                 else
-                {
                     // cannot jump to a different instance without resetting it
-                    player->RepopAtGraveyard();
-                    return false;
-                }
+                    MANGOS_ASSERT(playerBind->save == GetInstanceSave());
             }
         }
     }
