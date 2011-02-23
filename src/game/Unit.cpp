@@ -220,7 +220,6 @@ Unit::Unit()
     m_AuraFlags = 0;
 
     m_Visibility = VISIBILITY_ON;
-    m_AINotifySheduled = false;
 
     m_detectInvisibilityMask = 0;
     m_invisibilityMask = 0;
@@ -8669,11 +8668,14 @@ void Unit::SetVisibility(UnitVisibility x)
             }
         }
 
-        UpdateObjectVisibility();
-        GetViewPoint().Call_UpdateVisibilityForOwner();
-        GetViewPoint().Event_ViewPointVisibilityChanged();
+        Map *m = GetMap();
 
-        SetAINotifySheduled(true);
+        if(GetTypeId()==TYPEID_PLAYER)
+            m->PlayerRelocation((Player*)this,GetPositionX(),GetPositionY(),GetPositionZ(),GetOrientation());
+        else
+            m->CreatureRelocation((Creature*)this,GetPositionX(),GetPositionY(),GetPositionZ(),GetOrientation());
+
+        GetViewPoint().Event_ViewPointVisibilityChanged();
     }
 }
 
@@ -11995,22 +11997,4 @@ bool Unit::IsAllowedDamageInArea(Unit* pVictim) const
         return false;
 
     return true;
-}
-
-void Unit::OnRelocated(bool forced)
-{
-    // switch to use G3D::Vector3 is good idea, maybe
-    float dx = m_last_visbility_updated_position.x - GetPositionX();
-    float dy = m_last_visbility_updated_position.y - GetPositionY();
-    float dz = m_last_visbility_updated_position.z - GetPositionZ();
-    float distsq = dx*dx+dy*dy+dz*dz;
-    if (distsq > World::GetRelocationLowerLimitSq() || forced)
-    {
-        m_last_visbility_updated_position.x = GetPositionX();
-        m_last_visbility_updated_position.y = GetPositionY();
-        m_last_visbility_updated_position.z = GetPositionZ();
-        UpdateObjectVisibility();
-        GetViewPoint().Call_UpdateVisibilityForOwner();
-    }
-    SetAINotifySheduled(true);
 }
