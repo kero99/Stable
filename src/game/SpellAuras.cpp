@@ -9124,7 +9124,7 @@ Unit* SpellAuraHolder::GetCaster() const
     return ObjectAccessor::GetUnit(*m_target, m_casterGuid);// player will search at any maps
 }
 
-bool SpellAuraHolder::IsWeaponBuffCoexistableWith(SpellAuraHolder* ref)
+bool SpellAuraHolder::IsWeaponBuffCoexistableWith(SpellAuraHolder const* ref) const
 {
     // only item casted spells
     if (GetCastItemGuid().IsEmpty())
@@ -9176,7 +9176,7 @@ bool SpellAuraHolder::IsNeedVisibleSlot(Unit const* caster) const
     return !m_isPassive || totemAura || HasAreaAuraEffect(m_spellProto);
 }
 
-void SpellAuraHolder::SendAuraUpdate(bool remove)
+void SpellAuraHolder::SendAuraUpdate(bool remove) const
 {
     WorldPacket data(SMSG_AURA_UPDATE);
     data << m_target->GetPackGUID();
