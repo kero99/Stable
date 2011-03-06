@@ -818,9 +818,10 @@ void MapPersistentStateManager::_ResetInstance(uint32 mapid, uint32 instanceId)
     if (itr != m_instanceSaveByInstanceId.end() && !isExtended)
     {
         // delay reset until map unload for loaded map
-        Map * iMap = itr->second->GetMap();
-        if (iMap && iMap->IsDungeon())
+        if (Map * iMap = itr->second->GetMap())
         {
+            MANGOS_ASSERT(iMap->IsDungeon());
+
             ((DungeonMap*)iMap)->Reset(INSTANCE_RESET_RESPAWN_DELAY);
             return;
         }
